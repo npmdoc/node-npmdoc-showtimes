@@ -1,0 +1,204 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a>showtimes (v2.1.2)</a>
+</h1>
+<h4>a movie showtimes API</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.showtimes">module showtimes</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.showtimes.showtimes">
+            function <span class="apidocSignatureSpan"></span>showtimes
+            <span class="apidocSignatureSpan">(like: lang, date, or pageLimit)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.showtimes" id="apidoc.module.showtimes">module showtimes</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.showtimes.showtimes" id="apidoc.element.showtimes.showtimes">
+        function <span class="apidocSignatureSpan"></span>showtimes
+        <span class="apidocSignatureSpan">(like: lang, date, or pageLimit)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">class showtimes {
+<span class="apidocCodeCommentSpan">  /**
+   * @param  {string} location Location that you want to pull movie showtimes for.
+   * @param  {object} options  Object containing available options (like: lang, date, or pageLimit).
+   * @return {object}
+   */
+</span>  constructor (location, options) {
+    this.userAgent = 'showtimes (http://github.com/erunion/showtimes)'
+    this.baseUrl = 'http://google.com/movies'
+    this.location = location
+
+    // Handle available options
+    if (typeof options === 'undefined') {
+      options = {}
+    }
+
+    this.date = typeof options.date !== 'undefined' ? options.date : 0
+    this.lang = typeof options.lang !== 'undefined' ? options.lang : 'en'
+    this.pageLimit = typeof options.pageLimit !== 'undefined' ? options.pageLimit : 999
+  }
+
+  /**
+   * Parse and pull back an object of movie theaters for the currently configured location and date.
+   * @param  {string=}  query         Query string which works as a way to filter the theaters.
+   * @param  {Function} cb            Callback function to run after generating an object of theaters.
+   * @param  {number=}  [page=1]      Paginated page to pull theaters from. Hidden API, and is only used internally.
+   * @param  {object=}  [theaters=[]] Currently generated theaters. Hidden API, and is only used internally.
+   * @return void
+   */
+  getTheaters () {
+    this.page = 1
+    this.theaters = []
+
+    var query = (typeof arguments[0] !== 'function') ? arguments[0] : null
+    var cb = (typeof arguments[0] === 'function') ? arguments[0] : arguments[1]
+    var extraIdx = (typeof arguments[0] === 'function') ? 1 : 2
+
+    if (arguments.length &gt; extraIdx) {
+      this.page = arguments[extraIdx]
+      this.theaters = arguments[extraIdx + 1]
+    }
+
+    var api = this
+    this._request({q: query}, cb, (response) =&gt; {
+      if (api.lang === 'tr') {
+        response = iconv.decode(response, 'latin5')
+      }
+
+      var $ = cheerio.load(response)
+      if ($('.theater').length === 0) {
+        cb($('#results').text())
+        return
+      }
+
+      $('.theater').each((i, theater) =&gt; {
+        var theaterData = api._parseTheater($, $(theater))
+        if (theaterData.name.length === 0) {
+          return true
+        }
+
+        api.theaters.push(theaterData)
+      })
+
+      // No pages to paginate, so return the theaters back.
+      if ($('#navbar td a:contains("Next")').length === 0 || api.page === api.pageLimit) {
+        cb(null, api.theaters)
+        return
+      }
+
+      // Use the hidden API of getTheaters to pass in the next page and current theaters.
+      api.getTheaters(query, cb, ++api.page, api.theaters)
+    })
+  }
+
+  /**
+   * Parse and pull back a standardized object for a given movie.
+   * @param  {string}   theaterId  Theater ID for the theater you want to query. This can be obtained via getTheaters(),
+   *                               or getMovies()
+   * @param  {Function} cb         Callback function to run after generating a standardized object for this theater.
+   * @return {void}
+   */
+  getTheater (theaterId, cb) {
+    var api = this
+    this._request({tid: theaterId}, cb, (response) =&gt; {
+      var $ = cheerio.load(response)
+      if (!$('.showtimes')) {
+        cb($('#results').text())
+        return
+      }
+
+      var theater = $('.theater')
+      var theaterData = api._parseTheater($, theater, false, theaterId)
+
+      cb(null, theaterData)
+    })
+  }
+
+  /**
+   * Parse and pull back an object of movies for the currently configured location and date.
+   * @param  {string=}  query        Query string which works as a way to filter the movies.
+   * @param  {Function} cb           Callback function to run after generating an object of movies.
+   * @param  {number=}  [page=1]     Paginated page to pull movies from. Hidden API, and is only used internally.
+   * @param  {object=}  [movies=[]]  Currently generated movies. Hidden API, and is only used internally.
+   * @return void
+   */
+  getMovies () {
+    this.page = 1
+    this.movies = []
+
+    var query = (typeof arguments[0] !== 'function') ? arguments[0] : null
+    var cb = (typeof arguments[0] === 'function') ...</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
